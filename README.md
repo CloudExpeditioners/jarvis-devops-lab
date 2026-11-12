@@ -64,4 +64,4 @@ seas Owner, GitHub, Teams y capacidad de Copilot Studio (pago por uso).
 
 ## Licencia
 
-Sin licencia definida todavía: el autor debe elegir una antes de que otros reutilicen el código.
+Licencia MIT. Ver el archivo [LICENSE](LICENSE).
