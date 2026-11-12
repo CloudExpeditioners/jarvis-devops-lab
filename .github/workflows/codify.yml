@@ -1,0 +1,71 @@
+name: codify
+# Las manos de JARVIS para ACEPTAR un drift: abre un PR que cambia Git. Un humano aprueba.
+on:
+  workflow_dispatch:
+    inputs:
+      variable:
+        description: "Variable del catálogo"
+        required: true
+        type: choice
+        options: [app_service_sku]
+      valor:
+        description: "Valor observado en Azure"
+        required: true
+      justificacion:
+        description: "Motivo"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  abrir-pr:
+    if: vars.JARVIS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      # Token de la GitHub App: los PR creados con GITHUB_TOKEN no disparan plan.yml
+      - uses: actions/create-github-app-token@v1
+        id: app
+        with:
+          app-id: ${{ vars.JARVIS_APP_ID }}
+          private-key: ${{ secrets.JARVIS_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Editar terraform.tfvars
+        env:
+          VARIABLE: ${{ inputs.variable }}
+          VALOR: ${{ inputs.valor }}
+        run: python scripts/codificar_variable.py
+
+      - name: Commit y PR
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          VARIABLE: ${{ inputs.variable }}
+          VALOR: ${{ inputs.valor }}
+          JUSTIFICACION: ${{ inputs.justificacion }}
+        run: |
+          rama="jarvis/codify-${VARIABLE}-${GITHUB_RUN_ID}"
+          git config user.name  "jarvis-neobanco[bot]"
+          git config user.email "jarvis-neobanco[bot]@users.noreply.github.com"
+          git checkout -b "$rama"
+          git commit -am "JARVIS: codificar ${VARIABLE}=${VALOR} observado en Azure"
+          git push origin "$rama"
+          cuerpo=$(printf '%s\n' \
+            "## Propuesta de JARVIS" \
+            "" \
+            "Se detectó \`${VARIABLE}=${VALOR}\` en Azure, distinto de Git. Según la Política de Gestión de Cambios es un cambio de **capacidad (severidad media)**: no se revierte a ciegas." \
+            "" \
+            "**Justificación del agente:** ${JUSTIFICACION}" \
+            "" \
+            "Si apruebas, Git pasa a reflejar la realidad. Si lo rechazas, cierra el PR: Azure conserva el valor actual hasta que una persona decida; JARVIS no lo revertirá por su cuenta." \
+            "" \
+            "_El plan de este PR debería mostrar 0 cambios: Git y Azure coinciden._")
+          gh pr create --base main --head "$rama" --title "JARVIS · codificar ${VARIABLE}=${VALOR}" --body "$cuerpo" --label jarvis

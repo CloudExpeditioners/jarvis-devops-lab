@@ -1,0 +1,28 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+plan.json
+plan.txt
+targets.txt
+crash.log
+.terraform.lock.hcl.bak
+**/backend.hcl
+infra/plataforma/terraform.tfvars
+
+# Secretos y salidas locales
+bootstrap/salida-bootstrap.json
+*.pem
+functions/jarvis/local.settings.json
+
+# Python
+__pycache__/
+.venv/
+reporte.json
+
+# Secretos locales (webhooks, claves)
+*webhook*.txt
+vaciar_cola.py
+*.pfx

@@ -1,0 +1,19 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "ServiceBusConnection__fullyQualifiedNamespace": "sb-jarvis-xxxxx.servicebus.windows.net",
+    "GITHUB_OWNER": "tu-usuario",
+    "GITHUB_REPO": "jarvis-devops",
+    "GITHUB_APP_ID": "123456",
+    "GITHUB_APP_INSTALLATION_ID": "12345678",
+    "GITHUB_APP_PRIVATE_KEY": "-----BEGIN RSA PRIVATE KEY-----\\n...\\n-----END RSA PRIVATE KEY-----",
+    "TEAMS_WEBHOOK_URL": "https://...",
+    "DRIFT_BLOB_URL": "https://stjarvistfxxxxx.blob.core.windows.net/drift/latest.json",
+    "PRINCIPALES_IGNORADOS": "",
+    "RG_GESTIONADOS": "rg-neobanco-hub,rg-neobanco-core",
+    "MAX_TARGETS": "5",
+    "RECONCILE_ALLOWLIST": "azurerm_network_security_group.,azurerm_storage_account."
+  }
+}

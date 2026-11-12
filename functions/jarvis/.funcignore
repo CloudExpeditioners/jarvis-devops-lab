@@ -1,0 +1,5 @@
+.venv
+local.settings.json
+local.settings.json.example
+__pycache__
+tests

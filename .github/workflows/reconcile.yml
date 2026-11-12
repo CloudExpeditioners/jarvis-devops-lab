@@ -1,0 +1,101 @@
+name: reconcile
+# Las manos de JARVIS para REVERTIR: aplica main (Git ya es la verdad) acotado a los targets.
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: "Direcciones de Terraform separadas por comas"
+        required: true
+      severidad:
+        description: "critica | alta | baja"
+        required: true
+        default: critica
+      justificacion:
+        description: "Motivo, citando la política"
+        required: true
+
+concurrency:
+  group: neobanco-escritura
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ARM_USE_OIDC: "true"
+  ARM_USE_AZUREAD: "true"
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_APPLY }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  TARGETS: ${{ inputs.targets }}
+  MAX_TARGETS: ${{ vars.MAX_TARGETS }}
+
+jobs:
+  reconciliar:
+    # Interruptor de apagado: JARVIS_ENABLED=false y este job no se ejecuta.
+    if: vars.JARVIS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: jarvis-auto
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Guardrail 1 · validar targets (independiente del agente)
+        run: python scripts/validar_targets.py
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: terraform init
+        working-directory: infra/neobanco
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ vars.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ vars.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=neobanco.tfstate" \
+            -backend-config="use_azuread_auth=true"
+
+      - name: Plan de reconciliación acotado
+        working-directory: infra/neobanco
+        run: |
+          ARGS=()
+          IFS=',' read -ra LISTA <<< "$TARGETS"
+          for t in "${LISTA[@]}"; do ARGS+=("-target=$(echo "$t" | sed 's/^ *//;s/ *$//')"); done
+          printf '%s\n' "${ARGS[@]}" > targets.txt
+          terraform plan -input=false -lock-timeout=5m "${ARGS[@]}" -out=tfplan
+          terraform show -json tfplan > plan.json
+
+      - name: Guardrail 2 · sin destroy y dentro del radio de impacto
+        run: python scripts/guardrail_plan.py infra/neobanco/plan.json
+
+      - name: Aplicar
+        working-directory: infra/neobanco
+        run: terraform apply -input=false -lock-timeout=5m tfplan
+
+      - name: Verificar (el plan posterior debe estar limpio)
+        working-directory: infra/neobanco
+        run: |
+          mapfile -t ARGS < targets.txt
+          terraform plan -input=false -lock-timeout=5m -detailed-exitcode "${ARGS[@]}"
+
+      - name: Resumen
+        if: always()
+        # Los inputs los escribe el agente: van por variables de entorno, nunca interpolados en el script
+        env:
+          SEVERIDAD: ${{ inputs.severidad }}
+          JUSTIFICACION: ${{ inputs.justificacion }}
+        run: |
+          {
+            echo "### Reconciliación de JARVIS"
+            echo "- Targets: \`$TARGETS\`"
+            echo "- Severidad: **$SEVERIDAD**"
+            echo "- Justificación: $JUSTIFICACION"
+          } >> "$GITHUB_STEP_SUMMARY"

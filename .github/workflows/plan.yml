@@ -1,0 +1,50 @@
+name: plan
+# Plan en cada PR a la infraestructura de NeoBanco (identidad de solo lectura).
+on:
+  pull_request:
+    paths: ["infra/neobanco/**"]
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  ARM_USE_OIDC: "true"
+  ARM_USE_AZUREAD: "true"
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_PLAN }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    environment: neobanco-plan
+    defaults:
+      run:
+        working-directory: infra/neobanco
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - run: terraform fmt -check -recursive || echo "::warning::Ejecuta terraform fmt -recursive en local"
+      - name: terraform init
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ vars.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ vars.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=neobanco.tfstate" \
+            -backend-config="use_azuread_auth=true"
+      - run: terraform validate
+      - name: terraform plan
+        run: |
+          terraform plan -input=false -lock=false -no-color -out=tfplan | tee plan.txt
+      - name: Comentar en el PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          resumen=$(grep -E "^(Plan:|No changes)" plan.txt || echo "Ver el log del job")
+          gh pr comment ${{ github.event.pull_request.number }} --body "### terraform plan · NeoBanco
+          \`${resumen}\`"

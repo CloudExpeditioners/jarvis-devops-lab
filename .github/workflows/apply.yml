@@ -1,0 +1,45 @@
+name: apply
+# GitOps: cada merge a main en infra/neobanco se aplica. Git es la verdad.
+on:
+  push:
+    branches: [main]
+    paths: ["infra/neobanco/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: neobanco-escritura
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ARM_USE_OIDC: "true"
+  ARM_USE_AZUREAD: "true"
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_APPLY }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    environment: neobanco-prod
+    defaults:
+      run:
+        working-directory: infra/neobanco
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: terraform init
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ vars.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ vars.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=neobanco.tfstate" \
+            -backend-config="use_azuread_auth=true"
+      - run: terraform plan -input=false -lock-timeout=5m -out=tfplan
+      - run: terraform apply -input=false -lock-timeout=5m tfplan

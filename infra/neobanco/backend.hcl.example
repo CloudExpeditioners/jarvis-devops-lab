@@ -1,0 +1,6 @@
+# Copia a backend.hcl (solo para ejecutar en local). El pipeline pasa estos valores por variables.
+resource_group_name  = "rg-jarvis-bootstrap"
+storage_account_name = "stjarvistfxxxxx"
+container_name       = "tfstate"
+key                  = "neobanco.tfstate"
+use_azuread_auth     = true

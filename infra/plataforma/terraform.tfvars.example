@@ -1,0 +1,18 @@
+# Copia a terraform.tfvars (está en .gitignore) y completa con salida-bootstrap.json
+subscription_id      = "00000000-0000-0000-0000-000000000000"
+ubicacion            = "spaincentral"
+ubicacion_funciones  = "spaincentral"   # si falla Flex Consumption: "swedencentral"
+tfstate_sa_id        = "/subscriptions/.../resourceGroups/rg-jarvis-bootstrap/providers/Microsoft.Storage/storageAccounts/stjarvistfxxxxx"
+plan_principal_id    = "PLAN_PRINCIPAL_ID"
+apply_principal_id   = "APPLY_PRINCIPAL_ID"
+mi_usuario_object_id = "MI_USUARIO_OBJECT_ID"
+
+github_owner               = "tu-usuario-o-org"
+github_repo                = "jarvis-devops"
+github_app_id              = "123456"
+github_app_installation_id = "12345678"
+
+max_targets        = 5
+presupuesto_usd    = 100
+email_alertas      = "tu-correo@dominio.com"
+presupuesto_inicio = "2026-11-01T00:00:00Z"

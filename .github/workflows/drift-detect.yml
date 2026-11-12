@@ -1,0 +1,94 @@
+name: drift-detect
+# Los ojos de JARVIS: plan con identidad de SOLO LECTURA.
+on:
+  repository_dispatch:
+    types: [drift-signal]          # lo dispara la Function Centinela
+  schedule:
+    - cron: "*/30 * * * *"         # red de seguridad si se pierde un evento
+  workflow_dispatch:
+
+concurrency:
+  group: drift-detect
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ARM_USE_OIDC: "true"
+  ARM_USE_AZUREAD: "true"
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_PLAN }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  TFSTATE_SA: ${{ vars.TFSTATE_SA }}
+  SB_FQDN: ${{ vars.SB_FQDN }}
+
+jobs:
+  detectar:
+    # Interruptor de apagado: con JARVIS_ENABLED=false no se detecta ni se despierta al agente
+    if: vars.JARVIS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: neobanco-plan
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Antirrebote (agrupa ráfagas de eventos)
+        if: github.event_name == 'repository_dispatch'
+        run: sleep 75
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID_PLAN }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: terraform init
+        working-directory: infra/neobanco
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ vars.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ vars.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=neobanco.tfstate" \
+            -backend-config="use_azuread_auth=true"
+
+      - name: terraform plan (detección)
+        id: plan
+        working-directory: infra/neobanco
+        run: |
+          set +e
+          terraform plan -input=false -lock=false -detailed-exitcode -out=tfplan
+          code=$?
+          set -e
+          echo "exitcode=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" -eq 1 ]; then echo "::error::terraform plan falló"; exit 1; fi
+          terraform show -json tfplan > plan.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resumir drift para JARVIS
+        id: resumen
+        env:
+          EVENTO: ${{ toJson(github.event.client_payload) }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python scripts/resumen_drift.py infra/neobanco/plan.json reporte.json
+
+      - name: Publicar y despertar a JARVIS
+        run: |
+          pip install -q -r scripts/requirements.txt
+          python scripts/publicar_drift.py reporte.json
+
+      - name: Resumen del run
+        if: always()
+        run: |
+          echo "### Detección de drift" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Exit code del plan: \`${{ steps.plan.outputs.exitcode }}\` (2 = drift)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Tipo: \`${{ steps.resumen.outputs.tipo }}\` · recursos: ${{ steps.resumen.outputs.total }}" >> "$GITHUB_STEP_SUMMARY"
+          [ -f reporte.json ] && { echo '```json'; cat reporte.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY" || true

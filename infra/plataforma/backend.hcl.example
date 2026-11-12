@@ -1,0 +1,6 @@
+# Copia a backend.hcl y usa: terraform init -backend-config=backend.hcl
+resource_group_name  = "rg-jarvis-bootstrap"
+storage_account_name = "stjarvistfxxxxx"
+container_name       = "tfstate"
+key                  = "plataforma.tfstate"
+use_azuread_auth     = true
